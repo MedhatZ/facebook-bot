@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { generateFromTemplate, shouldUseTemplateOnly } from './templates.js';
 
 const DEFAULT_MODEL = 'claude-opus-4-6';
 
@@ -179,12 +180,30 @@ function extractPostText(data) {
   return null;
 }
 
+function isWafBlocked(data) {
+  if (typeof data !== 'string') return false;
+  const lower = data.toLowerCase();
+  return lower.includes('<!doctype') || lower.includes('aliyun_waf');
+}
+
+function assertValidApiResponse(data) {
+  if (isWafBlocked(data)) {
+    throw new Error('WAF_BLOCKED: API gateway blocked this server IP (use template fallback)');
+  }
+  if (typeof data === 'string') {
+    throw new Error(`API returned non-JSON response: ${data.slice(0, 120)}`);
+  }
+}
+
 function buildEmptyResponseError(data) {
+  if (isWafBlocked(data)) {
+    return new Error('WAF_BLOCKED: API gateway blocked this server IP (use template fallback)');
+  }
   const finishReason = data?.choices?.[0]?.finish_reason;
   const stopReason = data?.stop_reason;
   const hint = finishReason || stopReason || 'unknown';
   return new Error(
-    `API returned empty post text (finish: ${hint}). Response: ${JSON.stringify(data).slice(0, 500)}`
+    `API returned empty post text (finish: ${hint}). Response: ${JSON.stringify(data).slice(0, 300)}`
   );
 }
 
@@ -218,12 +237,24 @@ async function callViaAnthropicMessages(date, category, formatAnglePrompt) {
     {
       headers,
       timeout: 90000,
+      transformResponse: [(body) => body],
+      responseType: 'text',
     }
   );
 
-  const postText = extractPostText(response.data);
+  let data;
+  try {
+    data = JSON.parse(response.data);
+  } catch {
+    assertValidApiResponse(response.data);
+    throw new Error('Invalid JSON from messages API');
+  }
+
+  assertValidApiResponse(data);
+
+  const postText = extractPostText(data);
   if (!postText) {
-    throw buildEmptyResponseError(response.data);
+    throw buildEmptyResponseError(data);
   }
 
   return postText;
@@ -248,12 +279,24 @@ async function callViaChatCompletions(date, category, formatAnglePrompt) {
     {
       headers: getAgentRouterHeaders(apiKey),
       timeout: 90000,
+      transformResponse: [(body) => body],
+      responseType: 'text',
     }
   );
 
-  const postText = extractPostText(response.data);
+  let data;
+  try {
+    data = JSON.parse(response.data);
+  } catch {
+    assertValidApiResponse(response.data);
+    throw new Error('Invalid JSON from chat completions API');
+  }
+
+  assertValidApiResponse(data);
+
+  const postText = extractPostText(data);
   if (!postText) {
-    throw buildEmptyResponseError(response.data);
+    throw buildEmptyResponseError(data);
   }
 
   return postText;
@@ -278,10 +321,29 @@ async function callClaude(date, category, formatAnglePrompt) {
   return callViaAnthropicMessages(date, category, formatAnglePrompt);
 }
 
+function shouldFallbackToTemplate(error) {
+  const msg = error?.message || '';
+  return (
+    msg.includes('WAF_BLOCKED') ||
+    msg.includes('content-blocked') ||
+    msg.includes('empty post text') ||
+    msg.includes('non-JSON') ||
+    msg.includes('unauthorized client')
+  );
+}
+
 /**
  * Generate Facebook post content via Claude. Retries once on failure.
+ * On GitHub Actions (or API block), uses built-in Arabic templates.
  */
 export async function generatePost(date, category, formatAnglePrompt, log = console.log) {
+  if (shouldUseTemplateOnly()) {
+    const post = generateFromTemplate(category, date);
+    log(`[${timestamp()}] Using template post (GitHub Actions — API blocked from cloud servers)`);
+    log(`[${timestamp()}] Content generated successfully (${post.length} chars)`);
+    return post;
+  }
+
   let lastError;
 
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -297,10 +359,18 @@ export async function generatePost(date, category, formatAnglePrompt, log = cons
       const detail = formatApiError(error);
       const hint = unauthorizedHint(error.response?.data);
       log(`[${timestamp()}] Claude generation failed (attempt ${attempt}/2): ${error.message}${detail !== error.message ? ` | ${detail}` : ''}${hint}`);
+
+      if (shouldFallbackToTemplate(error)) {
+        const post = generateFromTemplate(category, date);
+        log(`[${timestamp()}] Falling back to template post (${post.length} chars)`);
+        return post;
+      }
     }
   }
 
-  throw lastError;
+  const post = generateFromTemplate(category, date);
+  log(`[${timestamp()}] Falling back to template post after API failure (${post.length} chars)`);
+  return post;
 }
 
 function timestamp() {

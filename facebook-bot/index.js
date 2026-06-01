@@ -95,8 +95,10 @@ async function runDailyPost() {
       categoryId: category.id,
       categoryName: category.name,
       formatAngle,
+      formatAnglePrompt,
       content,
       imagePath,
+      usedTemplate: process.env.GITHUB_ACTIONS === 'true',
       facebookPostId: postId,
     });
 
