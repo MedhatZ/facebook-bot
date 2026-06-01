@@ -1,0 +1,19 @@
+{
+  "name": "facebook-bot",
+  "version": "1.0.0",
+  "description": "Automated daily Facebook Page post scheduler with Claude AI content generation",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "post-now": "node index.js --now"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "node-cron": "^3.0.3"
+  }
+}
