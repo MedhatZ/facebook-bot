@@ -29,7 +29,7 @@ Example 3 (style reference):
 function getBrandConfig() {
   return {
     name: process.env.BRAND_NAME || 'M&U',
-    product: process.env.PRODUCT_NAME || 'بوتات فايبر جلاس',
+    product: process.env.PRODUCT_NAME || 'fiberglass planters',
     whatsapp: process.env.WHATSAPP_NUMBER || '01226626676',
   };
 }
@@ -38,7 +38,7 @@ function buildSystemPrompt() {
   const { name, product, whatsapp } = getBrandConfig();
 
   return `You are a Facebook marketing copywriter for "${name}" page.
-Product: ${product} — modern home decor, made to order (custom color and size).
+Product: fiberglass planters (بوتات فايبر جلاس) — modern home decor, made to order (custom color and size).
 WhatsApp orders: ${whatsapp}
 
 Writing rules (OUTPUT must be in Egyptian Arabic dialect, NOT formal Arabic):
@@ -54,8 +54,8 @@ Writing rules (OUTPUT must be in Egyptian Arabic dialect, NOT formal Arabic):
 ${EXAMPLE_POSTS}`;
 }
 
-function buildUserPrompt(date, category, formatAngle) {
-  const { name, product, whatsapp } = getBrandConfig();
+function buildUserPrompt(date, category, formatAnglePrompt) {
+  const { name, whatsapp } = getBrandConfig();
   const dateStr = date.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -65,10 +65,10 @@ function buildUserPrompt(date, category, formatAngle) {
   });
 
   return `Publish date: ${dateStr}
-Post type: ${category.name} — ${category.description}
-Style angle: ${formatAngle}
+Post type: ${category.promptTopic} — ${category.promptDesc}
+Style angle: ${formatAnglePrompt}
 
-Write a NEW Facebook post for ${name} (${product}) — not a copy of the examples, fresh topic.
+Write a NEW Facebook post for ${name} (fiberglass planters) — not a copy of the examples, fresh topic.
 
 Requirements:
 - 80–150 words in Egyptian Arabic
@@ -77,7 +77,7 @@ Requirements:
 - End with CTA + WhatsApp ${whatsapp}
 - 4–5 Arabic hashtags
 - Short lines with emojis
-- Return ONLY the post text in Egyptian Arabic, no explanation`;
+- Return ONLY the post text in Egyptian Arabic, no explanation or markdown`;
 }
 
 function getApiKey() {
@@ -112,7 +112,7 @@ function getAgentRouterHeaders(apiKey) {
     'x-app': 'cli',
     'x-stainless-lang': 'js',
     'x-stainless-package-version': '1.0.0',
-    'x-stainless-os': process.platform === 'win32' ? 'Windows' : process.platform,
+    'x-stainless-os': process.platform === 'win32' ? 'Windows' : 'Linux',
     'x-stainless-arch': process.arch,
     'x-stainless-runtime': 'node',
     'x-stainless-runtime-version': process.version,
@@ -130,53 +130,65 @@ function formatApiError(error) {
 function unauthorizedHint(data) {
   const message = data?.error?.message || data?.message || '';
   if (
-    errorIncludesUnauthorized(message) ||
+    /unauthorized/i.test(message) ||
     data?.type === 'unauthorized_client_error' ||
     data?.message === 'UNAUTHENTICATED'
   ) {
     return (
-      ' AgentRouter rejected the API key. Generate a new key at https://agentrouter.org/console/token ' +
-      'and ensure your account is active.'
+      ' AgentRouter rejected the API key. Generate a new key at https://agentrouter.org/console/token'
     );
+  }
+  if (data?.error?.code === 'content-blocked') {
+    return ' AgentRouter content filter blocked the request.';
   }
   return '';
 }
 
-function errorIncludesUnauthorized(message) {
-  return /unauthorized/i.test(message);
-}
+function extractPostText(data) {
+  if (!data) return null;
 
-async function callViaChatCompletions(date, category, formatAngle) {
-  const apiKey = getApiKey();
-  const baseUrl = getEndpointBase();
-  const model = getModel();
-  const url = `${baseUrl}/chat/completions`;
-
-  const response = await axios.post(
-    url,
-    {
-      model,
-      max_tokens: 1024,
-      messages: [
-        { role: 'system', content: buildSystemPrompt() },
-        { role: 'user', content: buildUserPrompt(date, category, formatAngle) },
-      ],
-    },
-    {
-      headers: getAgentRouterHeaders(apiKey),
-      timeout: 60000,
-    }
-  );
-
-  const postText = response.data?.choices?.[0]?.message?.content?.trim();
-  if (!postText) {
-    throw new Error('Chat completions API returned empty post text');
+  if (Array.isArray(data.content)) {
+    const text = data.content
+      .filter((block) => block.type === 'text' && block.text)
+      .map((block) => block.text)
+      .join('\n')
+      .trim();
+    if (text) return text;
   }
 
-  return postText;
+  const choice = data.choices?.[0];
+  const message = choice?.message;
+
+  if (typeof message?.content === 'string' && message.content.trim()) {
+    return message.content.trim();
+  }
+
+  if (Array.isArray(message?.content)) {
+    const text = message.content
+      .filter((part) => part?.text)
+      .map((part) => (typeof part.text === 'string' ? part.text : ''))
+      .join('\n')
+      .trim();
+    if (text) return text;
+  }
+
+  if (typeof choice?.text === 'string' && choice.text.trim()) {
+    return choice.text.trim();
+  }
+
+  return null;
 }
 
-async function callViaAnthropicMessages(date, category, formatAngle) {
+function buildEmptyResponseError(data) {
+  const finishReason = data?.choices?.[0]?.finish_reason;
+  const stopReason = data?.stop_reason;
+  const hint = finishReason || stopReason || 'unknown';
+  return new Error(
+    `API returned empty post text (finish: ${hint}). Response: ${JSON.stringify(data).slice(0, 500)}`
+  );
+}
+
+async function callViaAnthropicMessages(date, category, formatAnglePrompt) {
   const apiKey = getApiKey();
   const baseUrl = getEndpointBase();
   const model = getModel();
@@ -199,45 +211,77 @@ async function callViaAnthropicMessages(date, category, formatAngle) {
       messages: [
         {
           role: 'user',
-          content: buildUserPrompt(date, category, formatAngle),
+          content: buildUserPrompt(date, category, formatAnglePrompt),
         },
       ],
     },
     {
       headers,
-      timeout: 60000,
+      timeout: 90000,
     }
   );
 
-  const content = response.data?.content;
-  if (!Array.isArray(content) || content.length === 0) {
-    throw new Error('Anthropic messages API returned an empty or invalid response');
-  }
-
-  const textBlock = content.find((block) => block.type === 'text');
-  const postText = (textBlock?.text || content[0]?.text || '').trim();
-
+  const postText = extractPostText(response.data);
   if (!postText) {
-    throw new Error('Anthropic messages API returned empty post text');
+    throw buildEmptyResponseError(response.data);
   }
 
   return postText;
 }
 
-async function callClaude(date, category, formatAngle) {
+async function callViaChatCompletions(date, category, formatAnglePrompt) {
+  const apiKey = getApiKey();
+  const baseUrl = getEndpointBase();
+  const model = getModel();
+  const url = `${baseUrl}/chat/completions`;
+
+  const response = await axios.post(
+    url,
+    {
+      model,
+      max_tokens: 1024,
+      messages: [
+        { role: 'system', content: buildSystemPrompt() },
+        { role: 'user', content: buildUserPrompt(date, category, formatAnglePrompt) },
+      ],
+    },
+    {
+      headers: getAgentRouterHeaders(apiKey),
+      timeout: 90000,
+    }
+  );
+
+  const postText = extractPostText(response.data);
+  if (!postText) {
+    throw buildEmptyResponseError(response.data);
+  }
+
+  return postText;
+}
+
+async function callClaude(date, category, formatAnglePrompt) {
   const baseUrl = getEndpointBase();
 
   if (isAgentRouter(baseUrl)) {
-    return callViaChatCompletions(date, category, formatAngle);
+    try {
+      return await callViaAnthropicMessages(date, category, formatAnglePrompt);
+    } catch (messagesError) {
+      try {
+        return await callViaChatCompletions(date, category, formatAnglePrompt);
+      } catch (chatError) {
+        messagesError.suppressedError = chatError.message;
+        throw messagesError;
+      }
+    }
   }
 
-  return callViaAnthropicMessages(date, category, formatAngle);
+  return callViaAnthropicMessages(date, category, formatAnglePrompt);
 }
 
 /**
  * Generate Facebook post content via Claude. Retries once on failure.
  */
-export async function generatePost(date, category, formatAngle, log = console.log) {
+export async function generatePost(date, category, formatAnglePrompt, log = console.log) {
   let lastError;
 
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -245,14 +289,14 @@ export async function generatePost(date, category, formatAngle, log = console.lo
       if (attempt > 1) {
         log(`[${timestamp()}] Retrying Claude generation (attempt ${attempt}/2)...`);
       }
-      const post = await callClaude(date, category, formatAngle);
+      const post = await callClaude(date, category, formatAnglePrompt);
       log(`[${timestamp()}] Content generated successfully (${post.length} chars)`);
       return post;
     } catch (error) {
       lastError = error;
       const detail = formatApiError(error);
       const hint = unauthorizedHint(error.response?.data);
-      log(`[${timestamp()}] Claude generation failed (attempt ${attempt}/2): ${detail}${hint}`);
+      log(`[${timestamp()}] Claude generation failed (attempt ${attempt}/2): ${error.message}${detail !== error.message ? ` | ${detail}` : ''}${hint}`);
     }
   }
 

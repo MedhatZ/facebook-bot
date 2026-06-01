@@ -2,66 +2,76 @@ export const CATEGORIES = [
   {
     id: 'emotional-appeal',
     name: 'جمال يلمس القلب',
-    description: 'بوست عاطفي يخاطب السيدات — إنكِ تستاهلي ديكور يليق بيكِ',
+    promptTopic: 'Emotional appeal for women — you deserve beautiful decor',
+    promptDesc: 'Speak to how the customer deserves more than basic decor',
   },
   {
     id: 'factory-direct',
     name: 'من المصنع لبيتك',
-    description: 'جودة المصنع مباشرة، أسعار مناسبة، بدون وسطاء',
+    promptTopic: 'Factory direct to your home',
+    promptDesc: 'Quality from factory, fair prices, no middlemen',
   },
   {
     id: 'room-transform',
     name: 'غيّر شكل المكان',
-    description: 'سؤال عن ركن الزرع، الصالون، أو مدخل البيت — وM&U هو الحل',
+    promptTopic: 'Transform your space',
+    promptDesc: 'Ask about plants corner, living room, or entrance — M&U is the solution',
   },
   {
     id: 'custom-order',
     name: 'تصميم على المقاس',
-    description: 'اختيار اللون والمقاس حسب ذوق العميل — كل قطعة مخصصة',
+    promptTopic: 'Custom made to order',
+    promptDesc: 'Choose color and size — every piece is customized',
   },
   {
     id: 'delivery',
     name: 'توصيل لحد الباب',
-    description: 'توصيل لحد باب البيت + مراجعة الأوردر قبل الاستلام',
+    promptTopic: 'Doorstep delivery',
+    promptDesc: 'Delivery to your door plus order review before receiving',
   },
   {
     id: 'modern-decor',
     name: 'ديكور مودرن',
-    description: 'بوتات عصرية تناسب كل الأذواق والمساحات',
+    promptTopic: 'Modern decor',
+    promptDesc: 'Trendy pots that fit all tastes and spaces',
   },
   {
     id: 'plants-corner',
     name: 'ركن الزرع',
-    description: 'تجميل ركن الزرع والبلكونة والحديقة الصغيرة',
+    promptTopic: 'Plants corner makeover',
+    promptDesc: 'Beautify balcony, plants corner, or small garden',
   },
   {
     id: 'salon-decor',
     name: 'ديكور الصالون',
-    description: 'لمسة أنثوية وأناقة للصالون واستقبال الضيوف',
+    promptTopic: 'Living room decor',
+    promptDesc: 'Feminine elegant touch for salon and guests',
   },
   {
     id: 'entrance-decor',
     name: 'مدخل البيت',
-    description: 'أول انطباع ي counts — ديكور مدخل البيت وال reception',
+    promptTopic: 'Home entrance decor',
+    promptDesc: 'First impression matters — entrance and reception area',
   },
   {
     id: 'order-cta',
     name: 'اطلبي دلوقتي',
-    description: 'بوست تركيز على التواصل والطلب — واتساب أو البيدج',
+    promptTopic: 'Order now CTA',
+    promptDesc: 'Focus on contact and ordering via WhatsApp or page message',
   },
 ];
 
 export const FORMAT_ANGLES = [
-  'سؤال يشد الانتباه (عايز/عايزة تغيّر...؟)',
-  'خطاف عاطفي (أنتِ تستاهلي...)',
-  'مميزات المنتج في نقاط قصيرة',
-  'من المصنع مباشرة',
-  'تصميم حسب الطلب (لون + مقاس)',
-  'توصيل ومراجعة الأوردر',
-  'سؤال عن مكان في البيت (ركن الزرع / الصالون / المدخل)',
-  'نداء للعمل (تواصلي / ابعتلنا / اطلبي)',
-  'لمسة أنثوية وديكور ستات',
-  'عرض جودة وثقة',
+  { name: 'سؤال يشد الانتباه', prompt: 'Question hook (want to change your space?)' },
+  { name: 'خطاف عاطفي', prompt: 'Emotional hook (you deserve...)' },
+  { name: 'مميزات المنتج', prompt: 'Product benefits in short bullet points' },
+  { name: 'من المصنع مباشرة', prompt: 'Factory direct angle' },
+  { name: 'تصميم حسب الطلب', prompt: 'Custom order (color + size)' },
+  { name: 'توصيل ومراجعة', prompt: 'Delivery and order review before receiving' },
+  { name: 'سؤال عن مكان', prompt: 'Question about home area (plants corner / salon / entrance)' },
+  { name: 'نداء للعمل', prompt: 'Call to action (contact us / message us / order now)' },
+  { name: 'لمسة أنثوية', prompt: 'Feminine decor touch' },
+  { name: 'جودة وثقة', prompt: 'Quality and trust angle' },
 ];
 
 /**
@@ -77,8 +87,11 @@ export function selectTopic(lastCategoryId = null, date = new Date()) {
   }
 
   const category = CATEGORIES[index];
-  const formatAngle =
-    FORMAT_ANGLES[Math.floor(Math.random() * FORMAT_ANGLES.length)];
+  const angle = FORMAT_ANGLES[Math.floor(Math.random() * FORMAT_ANGLES.length)];
 
-  return { category, formatAngle };
+  return {
+    category,
+    formatAngle: angle.name,
+    formatAnglePrompt: angle.prompt,
+  };
 }

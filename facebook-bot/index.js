@@ -74,14 +74,14 @@ async function runDailyPost() {
     const logData = await loadPostsLog();
     const lastCategoryId = getLastCategoryId(logData.posts);
     const now = new Date();
-    const { category, formatAngle } = selectTopic(lastCategoryId, now);
+    const { category, formatAngle, formatAnglePrompt } = selectTopic(lastCategoryId, now);
 
     log(`Selected category: ${category.name} | Format: ${formatAngle}`);
 
     const { imagePath, poolSize } = await selectImage(getRecentlyUsedImages(logData.posts));
     logImageSelection(imagePath, poolSize, log);
 
-    const content = await generatePost(now, category, formatAngle, (msg) =>
+    const content = await generatePost(now, category, formatAnglePrompt, (msg) =>
       console.log(msg)
     );
 
