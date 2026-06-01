@@ -36,4 +36,8 @@ jobs:
           POST_HOUR: '13'
           POST_MINUTE: '0'
           TIMEZONE: Africa/Cairo
+          IMAGES_DIR: product-images
+          BRAND_NAME: M&U
+          PRODUCT_NAME: بوتات فايبر جلاس
+          WHATSAPP_NUMBER: '01226626676'
         run: node index.js --now
